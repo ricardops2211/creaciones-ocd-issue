@@ -1,18 +1,21 @@
-#!/usr/bin/env python3
-import json
 import sys
-import requests
-import base64
 import os
+import json
+import base64
+import requests
 
-# --- Configuración ---
 ticket_file = sys.argv[1]  # ejemplo: tickets/story_001.json
 jira_url = os.getenv("JIRA_URL")
-jira_auth = os.getenv("JIRA_AUTH")  # base64: username:token
+jira_user = os.getenv("JIRA_USER")  # username o correo
+jira_token = os.getenv("JIRA_TOKEN")  # API token de Jira
 
-if not jira_url or not jira_auth:
-    print("❌ Error: No se encontraron las variables de entorno JIRA_URL o JIRA_AUTH")
+if not jira_url or not jira_user or not jira_token:
+    print("❌ Error: No se encontraron las variables de entorno JIRA_URL, JIRA_USER o JIRA_TOKEN")
     sys.exit(1)
+
+# Construir auth en base64
+auth_str = f"{jira_user}:{jira_token}"
+jira_auth = base64.b64encode(auth_str.encode("utf-8")).decode("utf-8")
 
 # Leer el ticket original
 with open(ticket_file, "r", encoding="utf-8") as f:
