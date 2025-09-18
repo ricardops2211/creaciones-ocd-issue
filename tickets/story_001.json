@@ -1,7 +1,7 @@
 {
   "fields": {
     "issuetype": { "name": "Story" },
-    "project": { "key": "ONE" },
+    "project": { "key": "VC" },
     "summary": "USOPEN",
     "description": {
       "type": "doc",
