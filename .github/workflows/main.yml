@@ -1,1 +1,116 @@
 
+name: GHActions - Jira ITSM - Richie
+
+on:
+  repository_dispatch:
+    types: [jira-transition]
+  workflow_dispatch:
+    inputs:
+      issue_key:
+        description: "Clave del ticket Jira (ej: KAN-3)"
+        required: true
+      branch_name:
+        description: "Rama asociada al ticket (ej: release/KAN-3)"
+        required: true
+
+env:
+  JIRA_URL: "https://marketingpachas.atlassian.net"
+  JIRA_PROJECT: "KAN"
+
+jobs:
+  jira-itsm-workflow:
+    runs-on: self-hosted
+
+    steps:
+      - name: Determinar branch e issue
+        id: vars
+        run: |
+          if [ -n "${{ github.event.client_payload.branch_name }}" ]; then
+              echo "branch=${{ github.event.client_payload.branch_name }}" >> $GITHUB_OUTPUT
+              echo "issue=${{ github.event.client_payload.issue_key }}" >> $GITHUB_OUTPUT
+          else
+              echo "branch=${{ github.event.inputs.branch_name }}" >> $GITHUB_OUTPUT
+              echo "issue=${{ github.event.inputs.issue_key }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.vars.outputs.branch }}
+
+      - name: Login en Vault
+        shell: bash
+        env:
+          VAULT_ADDR: http://127.0.0.1:8200
+          VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+          VAULT_SKIP_VERIFY: "true"
+          PATH: ${{ env.PATH }}:/home/gha-runner/vault
+        run: |
+          set -Eeuo pipefail
+          vault login "$VAULT_TOKEN" >/dev/null
+
+      - name: Obtener credenciales Jira
+        id: get-jira
+        shell: bash
+        env:
+          VAULT_ADDR: http://127.0.0.1:8200
+          VAULT_SKIP_VERIFY: "true"
+          PATH: ${{ env.PATH }}:/home/gha-runner/vault
+        run: |
+          jiraAuth=$(vault kv get -field=JIRA_AUTH secret/jira)
+          echo "::add-mask::$jiraAuth"
+          echo "JIRA_AUTH=$jiraAuth" >> "$GITHUB_ENV"
+
+      - name: Procesar JSON de ticket con Python
+        shell: bash
+        env:
+          JIRA_URL: ${{ env.JIRA_URL }}
+          JIRA_AUTH: ${{ env.JIRA_AUTH }}
+        run: |
+          python3 scripts/scrapeo_qa.py tickets/story_001.json
+          TICKET_FILE="tickets/story_001_processed.json"
+          echo "📂 Usando archivo procesado: $TICKET_FILE"
+          echo "TICKET_FILE=$TICKET_FILE" >> "$GITHUB_ENV"
+
+
+
+
+      - name: Crear historia en Jira y agregar comentario
+        shell: bash
+        env:
+          JIRA_AUTH: ${{ env.JIRA_AUTH }}
+          JIRA_URL: ${{ env.JIRA_URL }}
+          TARGET_ISSUE: ${{ steps.vars.outputs.issue }}
+          TICKET_FILE: ${{ env.TICKET_FILE }}
+        run: |
+          set -Eeuo pipefail
+
+          # Crear la historia
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Basic $JIRA_AUTH" \
+            -H "Content-Type: application/json" \
+            --data @"$TICKET_FILE" \
+            "$JIRA_URL/rest/api/3/issue")
+
+          NEW_TICKET_KEY=$(echo "$RESPONSE" | jq -r '.key // empty')
+          if [ -z "$NEW_TICKET_KEY" ] || [ "$NEW_TICKET_KEY" = "null" ]; then
+            echo "❌ Error: no se pudo crear la historia en Jira"
+            echo "Respuesta de Jira: $RESPONSE"
+            exit 1
+          fi
+
+          NEW_TICKET_URL="$JIRA_URL/browse/$NEW_TICKET_KEY"
+          echo "✅ Ticket creado: $NEW_TICKET_KEY -> $NEW_TICKET_URL"
+
+          # Preparar comentario
+          COMMENT=$(jq -n --arg txt "Se ha creado la historia $NEW_TICKET_KEY: $NEW_TICKET_URL" \
+            '{body: {type: "doc", version: 1, content: [{type: "paragraph", content: [{type: "text", text: $txt}]}]}}')
+
+          # Agregar comentario al ticket target
+          curl -s -X POST \
+            -H "Authorization: Basic $JIRA_AUTH" \
+            -H "Content-Type: application/json" \
+            --data "$COMMENT" \
+            "$JIRA_URL/rest/api/3/issue/$TARGET_ISSUE/comment"
+
+          echo "💬 Comentario agregado en $TARGET_ISSUE"
