@@ -14,7 +14,8 @@ on:
 
 env:
   JIRA_URL: "https://marketingpachas.atlassian.net"
-  JIRA_AUTH: "${{ secrets.JIRA_TOKEN }}"
+  JIRA_USER: "${{ secrets.JIRA_USER }}"
+  JIRA_TOKEN: "${{ secrets.JIRA_TOKEN }}"
 
 jobs:
   jira-itsm-workflow:
@@ -41,7 +42,8 @@ jobs:
         shell: bash
         env:
           JIRA_URL: ${{ env.JIRA_URL }}
-          JIRA_AUTH: ${{ env.JIRA_AUTH }}
+          JIRA_USER: ${{ env.JIRA_USER }}
+          JIRA_TOKEN: ${{ env.JIRA_TOKEN }}
         run: |
           python3 scripts/scrapeo_qa.py tickets/story_001.json
           TICKET_FILE="tickets/story_001_processed.json"
@@ -52,8 +54,9 @@ jobs:
       - name: Crear historia en Jira y agregar comentario
         shell: bash
         env:
-          JIRA_AUTH: ${{ env.JIRA_AUTH }}
           JIRA_URL: ${{ env.JIRA_URL }}
+          JIRA_USER: ${{ env.JIRA_USER }}
+          JIRA_TOKEN: ${{ env.JIRA_TOKEN }}
           TARGET_ISSUE: ${{ steps.vars.outputs.issue }}
           TICKET_FILE: ${{ env.TICKET_FILE }}
         run: |
@@ -61,7 +64,7 @@ jobs:
 
           # Crear la historia
           RESPONSE=$(curl -s -X POST \
-            -H "Authorization: Basic $JIRA_AUTH" \
+            -u "$JIRA_USER:$JIRA_TOKEN" \
             -H "Content-Type: application/json" \
             --data @"$TICKET_FILE" \
             "$JIRA_URL/rest/api/3/issue")
@@ -82,7 +85,7 @@ jobs:
 
           # Agregar comentario al ticket target
           curl -s -X POST \
-            -H "Authorization: Basic $JIRA_AUTH" \
+            -u "$JIRA_USER:$JIRA_TOKEN" \
             -H "Content-Type: application/json" \
             --data "$COMMENT" \
             "$JIRA_URL/rest/api/3/issue/$TARGET_ISSUE/comment"
