@@ -2,7 +2,7 @@
   "fields": {
     "issuetype": { "name": "Story" },
     "project": { "key": "ONE" },
-    "summary": "USOPEN",
+    "summary": "KYNDRYL-LAB",
     "description": {
       "type": "doc",
       "version": 1,
@@ -10,7 +10,7 @@
         {
           "type": "paragraph",
           "content": [
-            { "type": "text", "text": "Creado desde GitHub Actions." }
+            { "type": "text", "text": "Creado para kyndryl" }
           ]
         }
       ]
